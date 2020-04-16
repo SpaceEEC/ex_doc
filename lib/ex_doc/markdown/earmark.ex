@@ -32,7 +32,7 @@ defmodule ExDoc.Markdown.Earmark do
         gfm: Keyword.get(opts, :gfm, true),
         line: Keyword.get(opts, :line, 1),
         file: Keyword.get(opts, :file, "nofile"),
-        breaks: Keyword.get(opts, :breaks, false),
+        breaks: Keyword.get(opts, :breaks, true),
         smartypants: Keyword.get(opts, :smartypants, false),
         pure_links: true
       )
