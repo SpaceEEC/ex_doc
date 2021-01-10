@@ -135,7 +135,8 @@ defmodule ExDoc.Retriever do
     line = find_module_line(module_data) || doc_line
 
     {function_groups, function_docs} = get_docs(module_data, source, config)
-    docs = function_docs ++ get_callbacks(module_data, source)
+    {callback_groups, callback_docs} = get_callbacks(module_data, source, config)
+    docs = function_docs ++ callback_docs
     types = get_types(module_data, source)
     {title, id} = module_title_and_id(module_data)
     {nested_title, nested_context} = nesting_info(title, config.nest_modules_by_prefix)
@@ -149,6 +150,7 @@ defmodule ExDoc.Retriever do
       type: module_data.type,
       deprecated: metadata[:deprecated],
       function_groups: function_groups,
+      callback_groups: callback_groups,
       docs: Enum.sort_by(docs, &sort_key(&1.name, &1.arity)),
       doc: moduledoc,
       doc_line: doc_line,
@@ -368,18 +370,25 @@ defmodule ExDoc.Retriever do
 
   ## Callback helpers
 
-  defp get_callbacks(%{type: :behaviour} = module_data, source) do
+  defp get_callbacks(%{type: :behaviour} = module_data, source, config) do
     {:docs_v1, _, _, _, _, _, docs} = module_data.docs
     optional_callbacks = module_data.name.behaviour_info(:optional_callbacks)
 
-    for {{kind, _, _}, _, _, _, _} = doc <- docs, kind in [:callback, :macrocallback] do
-      get_callback(doc, source, optional_callbacks, module_data)
-    end
+    groups_for_callbacks = Enum.map(config.groups_for_callbacks, fn {group, filter} ->
+      {Atom.to_string(group), filter}
+    end) ++ [{"Callbacks", fn _ -> true end}]
+
+    callback_docs =
+      for {{kind, _, _}, _, _, _, _} = doc <- docs, kind in [:callback, :macrocallback] do
+        get_callback(doc, source, optional_callbacks, module_data, groups_for_callbacks)
+      end
+
+    {Enum.map(groups_for_callbacks, &elem(&1, 0)), callback_docs}
   end
 
-  defp get_callbacks(_, _), do: []
+  defp get_callbacks(_, _, _), do: {[], []}
 
-  defp get_callback(callback, source, optional_callbacks, module_data) do
+  defp get_callback(callback, source, optional_callbacks, module_data, groups_for_callbacks) do
     {:docs_v1, _, _, content_type, _, _, _} = module_data.docs
     {{kind, name, arity}, anno, _, doc, metadata} = callback
     actual_def = actual_def(name, arity, kind)
@@ -395,6 +404,11 @@ defmodule ExDoc.Retriever do
     annotations =
       if actual_def in optional_callbacks, do: ["optional" | annotations], else: annotations
 
+    group =
+      Enum.find_value(groups_for_callbacks, fn {group, filter} ->
+        filter.(metadata) && group
+      end)
+
     doc_ast = doc_ast(content_type, doc, file: source.path, line: doc_line + 1)
 
     %ExDoc.FunctionNode{
@@ -409,6 +423,7 @@ defmodule ExDoc.Retriever do
       source_path: source.path,
       source_url: source_link(source, line),
       type: kind,
+      group: group,
       annotations: annotations
     }
   end
