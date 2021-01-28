@@ -599,7 +599,16 @@ defmodule ExDoc.Retriever do
 
   defp source_link(source, line) do
     source_url = Regex.replace(~r/%{path}/, source.url, source.path)
-    Regex.replace(~r/%{line}/, source_url, to_string(line))
+    source_url = Regex.replace(~r/%{line}/, source_url, to_string(line))
+
+    case Regex.run(~r{^apps/([^/]+)/}, source.path) do
+      [match, name] ->
+        Regex.replace(~r/%{app}/, source_url, name)
+        |> String.replace(match, "")
+
+      _ ->
+        source_url
+    end
   end
 
   defp source_path(module, config) do
